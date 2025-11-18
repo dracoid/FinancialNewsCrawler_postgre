@@ -1,6 +1,7 @@
 # telegram/sender.py
 import logging
-from typing import Optional
+from pathlib import Path
+from typing import Union
 
 import requests
 
@@ -11,64 +12,62 @@ logger = logging.getLogger(__name__)
 
 def _check_config() -> bool:
     if not settings.TG_BOT_TOKEN or not settings.TG_CHAT_ID:
-        logger.warning(
-            "Telegram not configured: TG_BOT_TOKEN or TG_CHAT_ID is empty. "
-            "Check your .env file."
+        logger.error(
+            "Telegram 설정이 비어 있습니다. "
+            "TG_BOT_TOKEN / TG_CHAT_ID 를 .env 에 설정하세요."
         )
         return False
     return True
 
 
-def send_message(text: str) -> None:
-    """
-    텍스트 메시지 한 건을 텔레그램으로 전송.
-    """
-    if not _check_config():
-        return
+def _api_base() -> str:
+    return f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}"
 
-    url = f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}/sendMessage"
-    data = {
+
+def send_message(text: str) -> bool:
+    if not _check_config():
+        return False
+
+    url = f"{_api_base()}/sendMessage"
+    payload = {
         "chat_id": settings.TG_CHAT_ID,
         "text": text,
         "parse_mode": "HTML",
     }
 
     try:
-        resp = requests.post(url, data=data, timeout=10)
-        if not resp.ok:
-            logger.error(
-                "Telegram send_message failed: %s - %s",
-                resp.status_code,
-                resp.text,
-            )
+        resp = requests.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        logger.info("Telegram message sent successfully")
+        return True
     except Exception as e:
-        logger.error("Telegram send_message exception: %s", e)
+        logger.exception("Failed to send Telegram message: %s", e)
+        return False
 
 
-def send_file(file_path: str, caption: Optional[str] = None) -> None:
-    """
-    파일(엑셀 등)을 텔레그램으로 전송.
-    """
+def send_file(file_path: Union[str, Path], caption: str = "") -> bool:
     if not _check_config():
-        return
+        return False
 
-    url = f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}/sendDocument"
-    data = {"chat_id": settings.TG_CHAT_ID}
-    if caption:
-        data["caption"] = caption
+    file_path = Path(file_path)
+    if not file_path.exists():
+        logger.error("send_file: file not found: %s", file_path)
+        return False
+
+    url = f"{_api_base()}/sendDocument"
+    data = {
+        "chat_id": settings.TG_CHAT_ID,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
 
     try:
-        with open(file_path, "rb") as f:
-            files = {"document": f}
-            resp = requests.post(url, data=data, files=files, timeout=60)
-
-        if not resp.ok:
-            logger.error(
-                "Telegram send_file failed: %s - %s",
-                resp.status_code,
-                resp.text,
-            )
-    except FileNotFoundError:
-        logger.error("Telegram send_file: file not found: %s", file_path)
+        with file_path.open("rb") as f:
+            files = {"document": (file_path.name, f)}
+            resp = requests.post(url, data=data, files=files, timeout=30)
+            resp.raise_for_status()
+        logger.info("Telegram file sent successfully: %s", file_path.name)
+        return True
     except Exception as e:
-        logger.error("Telegram send_file exception: %s", e)
+        logger.exception("Failed to send Telegram file: %s", e)
+        return False

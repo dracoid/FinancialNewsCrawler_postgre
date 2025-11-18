@@ -1,7 +1,6 @@
 # db/repository.py
 from datetime import date
 from typing import Iterable, List, Dict, Any
-
 import logging
 
 from app.models import NewsArticle
@@ -13,12 +12,8 @@ logger = logging.getLogger(__name__)
 def insert_articles(articles: Iterable[NewsArticle]) -> int:
     """
     news_history 테이블에 기사 여러 건을 한 번에 INSERT.
-
-    - 같은 링크라도 서로 다른 ticker 에서 온 뉴스는 각각 저장하고 싶다.
-    - 하지만 동일한 (link, ticker) 조합이 스케줄 실행 등으로 여러 번 들어오는 것은 막고 싶다.
-
-    그래서 DB 쪽에는 UNIQUE (link, ticker) 제약을 두고,
-    여기서는 ON CONFLICT (link, ticker) DO NOTHING 으로 중복을 무시한다.
+    link + ticker 에 UNIQUE 인덱스를 걸어두고
+    ON CONFLICT (link, ticker) DO NOTHING 으로 중복을 무시.
     """
     articles = list(articles)
     if not articles:
@@ -54,7 +49,7 @@ def insert_articles(articles: Iterable[NewsArticle]) -> int:
     logger.info("insert_articles: attempted=%d", len(data))
     return len(data)
     # 실제로 몇 건이 INSERT 되었는지 알고 싶으면
-    # executemany 대신 반복문으로 실행하면서 cur.rowcount 를 누적하는 방식도 가능.
+    # cur.rowcount 를 별도로 모아야 하지만, 여기서는 attempted 개수만 반환.
 
 
 def fetch_articles_for_date(target_date: date) -> List[Dict[str, Any]]:
@@ -76,4 +71,35 @@ def fetch_articles_for_date(target_date: date) -> List[Dict[str, Any]]:
             rows = cur.fetchall()
 
     logger.info("fetch_articles_for_date(%s): %d rows", target_date, len(rows))
+    return rows
+
+
+def fetch_latest_articles_for_ticker(
+    ticker: str,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    특정 ticker 에 대해, 날짜 제한 없이 가장 최근 기사 몇 개를 가져온다.
+    오늘 뉴스가 하나도 없을 때 fallback 용도로 사용.
+    """
+    sql = """
+        SELECT id, published, published_dt, category, ticker,
+               source_name, title, link
+        FROM public.news_history
+        WHERE ticker = %s
+        ORDER BY published_dt DESC, id DESC
+        LIMIT %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (ticker, limit))
+            rows = cur.fetchall()
+
+    logger.info(
+        "fetch_latest_articles_for_ticker(%s, limit=%d): %d rows",
+        ticker,
+        limit,
+        len(rows),
+    )
     return rows

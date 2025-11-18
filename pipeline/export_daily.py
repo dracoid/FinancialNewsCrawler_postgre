@@ -1,7 +1,8 @@
 # pipeline/export_daily.py
-import os
-from datetime import date
 import logging
+from datetime import date
+from pathlib import Path
+from typing import Tuple, Optional
 
 import pandas as pd
 
@@ -11,35 +12,39 @@ from db.repository import fetch_articles_for_date
 logger = logging.getLogger(__name__)
 
 
-def export_for_date(target_date: date) -> str:
+def export_for_date(target_date: date) -> Tuple[Optional[Path], int]:
     """
-    news_history에서 target_date(YYYY-MM-DD) 기준 기사들을 조회해서
-    엑셀 파일로 저장하고, 파일 경로를 반환한다.
-    데이터가 없으면 빈 문자열("")을 반환.
+    news_history 에서 target_date 기준 기사들을 조회해서
+    엑셀 파일로 저장하고, (파일경로, 행 개수)를 반환.
+    데이터가 없으면 (None, 0) 반환.
     """
     rows = fetch_articles_for_date(target_date)
 
     if not rows:
         logger.info("export_for_date(%s): no rows to export", target_date)
-        return ""
+        return None, 0
 
     df = pd.DataFrame(rows)
 
-    # 출력 디렉토리 생성
-    export_dir = settings.EXPORT_DIR
-    os.makedirs(export_dir, exist_ok=True)
+    # 정렬
+    sort_cols = [c for c in ["ticker", "published_dt", "id"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols)
 
-    filename = f"news_{target_date.isoformat()}.xlsx"
-    filepath = os.path.join(export_dir, filename)
+    export_dir: Path = settings.EXPORT_DIR
+    export_dir.mkdir(parents=True, exist_ok=True)
 
-    df.to_excel(filepath, index=False)
-    logger.info("export_for_date(%s): %d rows -> %s", target_date, len(df), filepath)
+    filename = f"news_{target_date.strftime('%Y%m%d')}.xlsx"
+    file_path = export_dir / filename
 
-    return filepath
+    df.to_excel(file_path, index=False)
 
+    logger.info(
+        "export_for_date(%s): %d rows -> %s (exists=%s)",
+        target_date,
+        len(df),
+        file_path,
+        file_path.exists(),
+    )
 
-def export_today_to_excel() -> str:
-    """
-    오늘 날짜 기준으로 export_for_date 호출하는 헬퍼.
-    """
-    return export_for_date(date.today())
+    return file_path, len(df)

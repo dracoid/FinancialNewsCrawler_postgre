@@ -5,11 +5,8 @@ import os
 
 from dotenv import load_dotenv
 
-
-# 프로젝트 루트 경로 (app/ 의 부모)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 루트에 있는 .env 파일 로드
 ENV_PATH = BASE_DIR / ".env"
 if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
@@ -28,8 +25,15 @@ class Settings:
     TG_BOT_TOKEN: str = os.getenv("TG_BOT_TOKEN", "")
     TG_CHAT_ID: str = os.getenv("TG_CHAT_ID", "")
 
-    # 파일 export 위치 (로컬/도커 공통)
-    EXPORT_DIR: Path = Path(os.getenv("EXPORT_DIR", BASE_DIR / "output"))
+    # EXPORT_DIR: .env에 절대경로면 그대로, 상대경로면 BASE_DIR 기준
+    _export_dir_env: str = os.getenv("EXPORT_DIR", "output")
+
+    @property
+    def EXPORT_DIR(self) -> Path:
+        path = Path(self._export_dir_env)
+        if path.is_absolute():
+            return path
+        return (BASE_DIR / path).resolve()
 
 
 settings = Settings()
