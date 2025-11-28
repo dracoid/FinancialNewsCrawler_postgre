@@ -2,15 +2,13 @@ version: "3.9"
 
 services:
   financial_news_crawler:
-    image: financial_news_crawler:latest    # build 대신 image 사용
-    container_name: financial_news_crawler
-    network_mode: host                      # 컨테이너도 host 네트워크 사용
+    image: financial_news_crawler_postgre:latest   # 여기만 확실히 지정
+    container_name: financial_news_crawler_postgre
     env_file:
       - .env
     volumes:
       - ./output:/app/output
       - ./rss_config/rss_list.xlsx:/app/rss_config/rss_list.xlsx:ro
+    network_mode: "host"
     environment:
       - PYTHONUNBUFFERED=1
-    # Dockerfile CMD 써도 되는데, 확실히 하고 싶으면 아래 주석을 풀어도 됨
-    # command: ["python", "-m", "scripts.run_all"]
